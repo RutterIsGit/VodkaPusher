@@ -1,4 +1,4 @@
-import os, zipfile, io, requests, csv
+import os, zipfile, io, requests, csv, time
 from pathlib import Path
 from bs4 import BeautifulSoup   # pip install beautifulsoup4 lxml
 
@@ -40,6 +40,44 @@ def fetch(url):
     except Exception as e:
         print(f"Error fetching {url}: {e}")
         return b""
+
+def find_osm_website(name, postcode):
+    """Lookup a business website in OSM via Overpass using name and postcode."""
+    def esc(v: str) -> str:
+        return v.replace('"', '\\"')
+
+    query = f"""
+    [out:json][timeout:25];
+    (
+      node["name"="{esc(name)}"]["addr:postcode"="{postcode}"]["website"];
+      node["name"="{esc(name)}"]["addr:postcode"="{postcode}"]["contact:website"];
+      way["name"="{esc(name)}"]["addr:postcode"="{postcode}"]["website"];
+      way["name"="{esc(name)}"]["addr:postcode"="{postcode}"]["contact:website"];
+      relation["name"="{esc(name)}"]["addr:postcode"="{postcode}"]["website"];
+      relation["name"="{esc(name)}"]["addr:postcode"="{postcode}"]["contact:website"];
+    );
+    out tags;
+    """
+
+    try:
+        resp = requests.get(
+            "https://overpass-api.de/api/interpreter",
+            params={"data": query},
+            timeout=60,
+        )
+        resp.raise_for_status()
+        data = resp.json()
+    except Exception as e:
+        print(f"Overpass error for {name!r} {postcode}: {e}")
+        return None
+
+    for el in data.get("elements", []):
+        tags = el.get("tags", {})
+        if "website" in tags:
+            return tags["website"]
+        if "contact:website" in tags:
+            return tags["contact:website"]
+    return None
 
 def main():
     rows = []
@@ -103,6 +141,17 @@ def main():
             unique[key] = r
 
     deduped_rows = list(unique.values())
+
+    # Attempt to enrich with website information from OpenStreetMap
+    print("Querying OpenStreetMap for missing websites...")
+    for idx, row in enumerate(deduped_rows, 1):
+        if not row["website"] and row["postcode"] and row["name"]:
+            url = find_osm_website(row["name"], row["postcode"])
+            if url:
+                row["website"] = url
+            # polite pause every few requests to avoid hammering the API
+            if idx % 10 == 0:
+                time.sleep(1)
 
     print(f"Writing {len(deduped_rows):,} rows → {OUT}")
     with OUT.open("w", newline="", encoding="utf-8") as f:
