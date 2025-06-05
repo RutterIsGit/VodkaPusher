@@ -81,12 +81,12 @@ def find_osm_website(name, postcode):
     query = f"""
     [out:json][timeout:25];
     (
-      node["name"="{esc(name)}"]["addr:postcode"="{postcode}"]["website"];
-      node["name"="{esc(name)}"]["addr:postcode"="{postcode}"]["contact:website"];
-      way["name"="{esc(name)}"]["addr:postcode"="{postcode}"]["website"];
-      way["name"="{esc(name)}"]["addr:postcode"="{postcode}"]["contact:website"];
-      relation["name"="{esc(name)}"]["addr:postcode"="{postcode}"]["website"];
-      relation["name"="{esc(name)}"]["addr:postcode"="{postcode}"]["contact:website"];
+      node["name"~"{esc(name)}",i]["addr:postcode"="{postcode}"]["contact:website"];
+      node["name"~"{esc(name)}",i]["addr:postcode"="{postcode}"]["website"];
+      way["name"~"{esc(name)}",i]["addr:postcode"="{postcode}"]["contact:website"];
+      way["name"~"{esc(name)}",i]["addr:postcode"="{postcode}"]["website"];
+      relation["name"~"{esc(name)}",i]["addr:postcode"="{postcode}"]["contact:website"];
+      relation["name"~"{esc(name)}",i]["addr:postcode"="{postcode}"]["website"];
     );
     out tags;
     """
@@ -95,20 +95,23 @@ def find_osm_website(name, postcode):
         resp = requests.get(
             "https://overpass-api.de/api/interpreter",
             params={"data": query},
-            timeout=60,
+            timeout=30,  # Changed timeout to 30 seconds
         )
         resp.raise_for_status()
         data = resp.json()
-    except Exception as e:
-        print(f"Overpass error for {name!r} {postcode}: {e}")
+    except requests.exceptions.Timeout:
+        print(f"Overpass request timed out for {name!r} {postcode}")
+        return None
+    except requests.exceptions.RequestException as e:
+        print(f"Overpass request error for {name!r} {postcode}: {e}")
         return None
 
     for el in data.get("elements", []):
         tags = el.get("tags", {})
+        if "contact:website" in tags: # Prioritize contact:website
+            return tags["contact:website"]
         if "website" in tags:
             return tags["website"]
-        if "contact:website" in tags:
-            return tags["contact:website"]
     return None
 
 def main():
@@ -186,7 +189,7 @@ def main():
                 row["website"] = url
             # polite pause every few requests to avoid hammering the API
             if idx % 10 == 0:
-                time.sleep(1)
+                time.sleep(2) # Increased sleep time to 2 seconds
 
     # Optional: use Google Programmable Search to fill any remaining blanks
     g_api_key = os.getenv("GOOGLE_API_KEY")
