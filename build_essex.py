@@ -153,6 +153,18 @@ def main():
             if idx % 10 == 0:
                 time.sleep(1)
 
+    # Optional: use Google Programmable Search to fill any remaining blanks
+    g_api_key = os.getenv("GOOGLE_API_KEY")
+    g_cx = os.getenv("GOOGLE_CX")
+    if g_api_key and g_cx:
+        try:
+            import google_website_enricher
+            google_website_enricher.enrich_rows_with_google(deduped_rows, g_api_key, g_cx)
+        except Exception as exc:
+            print(f"Google enrichment failed: {exc}")
+    else:
+        print("Skipping Google enrichment. Set GOOGLE_API_KEY and GOOGLE_CX to enable.")
+
     print(f"Writing {len(deduped_rows):,} rows → {OUT}")
     with OUT.open("w", newline="", encoding="utf-8") as f:
         w = csv.DictWriter(f, fieldnames=cols)
