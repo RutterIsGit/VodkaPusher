@@ -1,10 +1,42 @@
 import os, zipfile, io, requests, csv, time
 from pathlib import Path
+from difflib import SequenceMatcher
 from bs4 import BeautifulSoup   # pip install beautifulsoup4 lxml
 
 OUT = Path("essex_licensed_venues.csv")
 cols = ["name","business_type","website","lat","lon",
         "address_line1","address_line2","postcode"]
+
+# Chains that typically do not sell alcohol and should be excluded
+EXCLUDED_CHAINS = [
+    "McDonald's",
+    "Subway",
+    "KFC",
+    "Burger King",
+    "Starbucks",
+    "Costa",
+    "Greggs",
+    "Pret A Manger",
+    "Domino",
+    "Pizza Hut",
+]
+
+
+def _normalise(text: str) -> str:
+    """Lower-case alphanumeric characters only for fuzzy matching."""
+    return "".join(c for c in text.lower() if c.isalnum())
+
+
+def is_excluded_chain(name: str, threshold: float = 0.8) -> bool:
+    """Return True if the name resembles a known non-alcohol chain."""
+    n = _normalise(name)
+    for chain in EXCLUDED_CHAINS:
+        c = _normalise(chain)
+        if c in n:
+            return True
+        if SequenceMatcher(None, n, c).ratio() >= threshold:
+            return True
+    return False
 
 def parse_fhrs(xml_bytes):
     root = BeautifulSoup(xml_bytes, "xml")
@@ -141,6 +173,9 @@ def main():
             unique[key] = r
 
     deduped_rows = list(unique.values())
+
+    # Remove chains unlikely to sell alcohol before enriching with websites
+    deduped_rows = [r for r in deduped_rows if not is_excluded_chain(r["name"])]
 
     # Attempt to enrich with website information from OpenStreetMap
     print("Querying OpenStreetMap for missing websites...")

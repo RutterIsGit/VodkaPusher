@@ -16,3 +16,10 @@ python google_website_enricher.py
 
 Both variables can also be set when running `build_essex.py` to enable Google
 enrichment as part of the build process.
+
+## Filtering out non-alcohol restaurant chains
+
+`build_essex.py` removes well known fast-food and coffee shop chains (for
+example McDonald's or Subway) before any website enrichment takes place.  The
+filter uses fuzzy matching so common variations such as "McDonalds" or
+"McDonald's" are detected automatically.
