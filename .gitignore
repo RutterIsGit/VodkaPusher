@@ -1,0 +1,64 @@
+# Environment files
+.env
+.env.local
+.env.*.local
+
+# Virtual environments
+venv/
+.venv/
+env/
+.env/
+
+# Generated CSV files
+*.csv
+!requirements.txt
+
+# Cache directories
+cache/
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# OS files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# IDE files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Logs
+*.log
+logs/
+
+# Temporary files
+*.tmp
+*.temp
+
+# Documentation exports
+*.docx
+*.pdf
+
+# JSON reports
+*_report.json
+*_enrichment_report.json
+
+# API results
+*_results_*.csv
+knowledge_graph_results_*.csv
+places_api_results_*.csv
+places_new_api_results_*.csv
+
+# Build artifacts
+build/
+dist/
+*.egg-info/

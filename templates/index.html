@@ -1,0 +1,148 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Essex Pub Data Enricher</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="/static/css/style.css">
+</head>
+<body>
+    <div class="container mt-4">
+        <h1 class="text-center mb-4">Essex Pub Data Enricher</h1>
+        
+        <div class="row">
+            <div class="col-md-12">
+                <div class="card mb-3">
+                    <div class="card-header">
+                        <h5>1. Seed Data Generation</h5>
+                    </div>
+                    <div class="card-body">
+                        <div class="row">
+                            <div class="col-md-8">
+                                <p class="mb-2">Status: <span id="seed-status" class="badge bg-secondary">Ready</span></p>
+                                <p class="mb-2">Records: <span id="seed-records">-</span></p>
+                                <div id="seed-message" class="text-muted small"></div>
+                            </div>
+                            <div class="col-md-4 text-end">
+                                <button id="btn-seed" class="btn btn-primary" onclick="runSeedData()">Run Update</button>
+                            </div>
+                        </div>
+                        <div class="progress mt-2" style="display: none;" id="seed-progress-bar">
+                            <div class="progress-bar progress-bar-striped progress-bar-animated" role="progressbar" style="width: 0%"></div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="card mb-3">
+                    <div class="card-header">
+                        <h5>2. Google Website Enrichment</h5>
+                    </div>
+                    <div class="card-body">
+                        <div class="row">
+                            <div class="col-md-8">
+                                <div class="mb-2">
+                                    <div class="form-check form-check-inline">
+                                        <input class="form-check-input" type="radio" name="enrichMode" id="enrichMissing" value="missing" checked>
+                                        <label class="form-check-label" for="enrichMissing">
+                                            Enrich missing only
+                                        </label>
+                                    </div>
+                                    <div class="form-check form-check-inline">
+                                        <input class="form-check-input" type="radio" name="enrichMode" id="enrichAll" value="all">
+                                        <label class="form-check-label" for="enrichAll">
+                                            Refresh all records
+                                        </label>
+                                    </div>
+                                </div>
+                                <p class="mb-2">Status: <span id="google-status" class="badge bg-secondary">Ready</span></p>
+                                <div id="google-message" class="text-muted small"></div>
+                            </div>
+                            <div class="col-md-4 text-end">
+                                <button id="btn-google" class="btn btn-primary" onclick="runGoogleEnrich()">Run</button>
+                            </div>
+                        </div>
+                        <div class="progress mt-2" style="display: none;" id="google-progress-bar">
+                            <div class="progress-bar progress-bar-striped progress-bar-animated" role="progressbar" style="width: 0%"></div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="card mb-3">
+                    <div class="card-header">
+                        <h5>3. Contact Information Scraping</h5>
+                    </div>
+                    <div class="card-body">
+                        <div class="row">
+                            <div class="col-md-8">
+                                <p class="mb-2">Status: <span id="scrape-status" class="badge bg-secondary">Ready</span></p>
+                                <div id="scrape-message" class="text-muted small"></div>
+                            </div>
+                            <div class="col-md-4 text-end">
+                                <button id="btn-scrape" class="btn btn-primary" onclick="runScrapeContacts()">Run</button>
+                            </div>
+                        </div>
+                        <div class="progress mt-2" style="display: none;" id="scrape-progress-bar">
+                            <div class="progress-bar progress-bar-striped progress-bar-animated" role="progressbar" style="width: 0%"></div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="card mb-3">
+                    <div class="card-header">
+                        <h5>4. Email Verification (Hunter)</h5>
+                    </div>
+                    <div class="card-body">
+                        <div class="row">
+                            <div class="col-md-8">
+                                <div class="mb-2">
+                                    <div class="form-check">
+                                        <input class="form-check-input" type="checkbox" id="dryRun">
+                                        <label class="form-check-label" for="dryRun">
+                                            Dry run mode (test with sample data only)
+                                        </label>
+                                    </div>
+                                </div>
+                                <p class="mb-2">Status: <span id="verify-status" class="badge bg-secondary">Ready</span></p>
+                                <div id="verify-message" class="text-muted small">Find and verify email addresses using Hunter API</div>
+                                <div id="verify-report" class="mt-2" style="display: none;">
+                                    <div class="small">
+                                        <strong>Results:</strong>
+                                        <ul class="mb-0">
+                                            <li>Emails found: <span id="emails-found">0</span></li>
+                                            <li>Emails verified: <span id="emails-verified">0</span></li>
+                                            <li>Invalid emails: <span id="invalid-emails">0</span></li>
+                                            <li>API credits used: <span id="credits-used">0</span></li>
+                                        </ul>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="col-md-4 text-end">
+                                <button id="btn-verify" class="btn btn-primary" onclick="runVerifyEmails()">Run</button>
+                                <button class="btn btn-sm btn-link" onclick="showHunterConfig()">Configure</button>
+                            </div>
+                        </div>
+                        <div class="progress mt-2" style="display: none;" id="verify-progress-bar">
+                            <div class="progress-bar progress-bar-striped progress-bar-animated" role="progressbar" style="width: 0%"></div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="card">
+                    <div class="card-header">
+                        <h5>Data Files</h5>
+                    </div>
+                    <div class="card-body">
+                        <div id="file-list" class="list-group">
+                            <p class="text-muted">Loading files...</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
+    <script src="/static/js/app.js"></script>
+</body>
+</html>

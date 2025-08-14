@@ -2,6 +2,8 @@ import os, zipfile, io, requests, csv, time
 from pathlib import Path
 from difflib import SequenceMatcher
 from bs4 import BeautifulSoup   # pip install beautifulsoup4 lxml
+from config.filters import should_exclude_business_name
+from utils.filtering import FilterStatistics
 
 OUT = Path("essex_licensed_venues.csv")
 cols = ["name","business_type","website","lat","lon",
@@ -73,25 +75,48 @@ def fetch(url):
         print(f"Error fetching {url}: {e}")
         return b""
 
-def find_osm_website(name, postcode):
+def find_osm_website(name, postcode, cache=None, offline_data=None):
     """Lookup a business website in OSM via Overpass using name and postcode."""
-    def esc(v: str) -> str:
-        return v.replace('"', '\\"')
-
-    query = f"""
-    [out:json][timeout:25];
-    (
-      node["name"~"{esc(name)}",i]["addr:postcode"="{postcode}"]["contact:website"];
-      node["name"~"{esc(name)}",i]["addr:postcode"="{postcode}"]["website"];
-      way["name"~"{esc(name)}",i]["addr:postcode"="{postcode}"]["contact:website"];
-      way["name"~"{esc(name)}",i]["addr:postcode"="{postcode}"]["website"];
-      relation["name"~"{esc(name)}",i]["addr:postcode"="{postcode}"]["contact:website"];
-      relation["name"~"{esc(name)}",i]["addr:postcode"="{postcode}"]["website"];
-    );
-    out tags;
-    """
-
+    # First check cache
+    if cache:
+        cached_website = cache.get_website(name, postcode)
+        if cached_website is not None:
+            return cached_website
+    
+    # Try online query
     try:
+        from osm_helper import OSMHelper
+        helper = OSMHelper(timeout=10)  # Shorter timeout since we have fallbacks
+        website = helper.find_website(name, postcode)
+        
+        # Cache the result (even if None)
+        if cache:
+            cache.set_website(name, postcode, website)
+        
+        return website
+    except (ImportError, Exception) as e:
+        # If online fails, try offline data
+        if offline_data:
+            website = offline_data.find_website(name, postcode)
+            if website and cache:
+                cache.set_website(name, postcode, website)
+            return website
+    
+    # Final fallback to original implementation
+    try:
+        # Fallback to original implementation if helper not available
+        def esc(v: str) -> str:
+            return v.replace('"', '\\"')
+
+        query = f"""
+        [out:json][timeout:25];
+        (
+          nwr["name"="{esc(name)}"]["addr:postcode"="{postcode}"]["website"];
+          nwr["name"="{esc(name)}"]["addr:postcode"="{postcode}"]["contact:website"];
+        );
+        out center;
+        """
+
         resp = requests.get(
             "https://overpass-api.de/api/interpreter",
             params={"data": query},
@@ -99,6 +124,7 @@ def find_osm_website(name, postcode):
         )
         resp.raise_for_status()
         data = resp.json()
+<<<<<<< HEAD
     except requests.exceptions.Timeout:
         print(f"Overpass request timed out for {name!r} {postcode}")
         return None
@@ -112,10 +138,25 @@ def find_osm_website(name, postcode):
             return tags["contact:website"]
         if "website" in tags:
             return tags["website"]
-    return None
+        return None
+    except Exception as e:
+        print(f"Overpass error for {name!r} {postcode}: {e}")
+        return None
 
-def main():
+def main(skip_osm=False):
+    """
+    Main function to build Essex venue list.
+    
+    Args:
+        skip_osm: If True, skip OSM enrichment entirely (useful when OSM is down)
+    """
     rows = []
+    filter_stats = FilterStatistics()
+    
+    # Check for environment variable to skip OSM
+    if os.getenv("SKIP_OSM", "").lower() in ("true", "1", "yes"):
+        skip_osm = True
+        print("SKIP_OSM environment variable set - skipping OSM enrichment")
     for la_id in (109,110,113,117,119,121,125,128,134,143,148,152,196,199):
         print(f"Processing LA ID: {la_id}")
         xml_content = fetch(
@@ -181,33 +222,101 @@ def main():
     deduped_rows = [r for r in deduped_rows if not is_excluded_chain(r["name"])]
 
     # Attempt to enrich with website information from OpenStreetMap
-    print("Querying OpenStreetMap for missing websites...")
-    for idx, row in enumerate(deduped_rows, 1):
-        if not row["website"] and row["postcode"] and row["name"]:
-            url = find_osm_website(row["name"], row["postcode"])
-            if url:
-                row["website"] = url
-            # polite pause every few requests to avoid hammering the API
-            if idx % 10 == 0:
-                time.sleep(2) # Increased sleep time to 2 seconds
+    if skip_osm:
+        print("Skipping OpenStreetMap enrichment (disabled)")
+    else:
+        print("Querying OpenStreetMap for missing websites...")
+        
+        # Initialize cache and offline fallback
+        try:
+            from osm_cache import OSMCache, OSMOfflineData
+            cache = OSMCache()
+            offline_data = OSMOfflineData()
+            print(f"  Using cache with {cache.get_stats()['total_cached']} entries")
+        except ImportError:
+            cache = None
+            offline_data = None
+            print("  Warning: Cache system not available")
+        
+        osm_enriched = 0
+        osm_failed = 0
+        osm_skipped = 0
+        osm_cached = 0
+        
+        for idx, row in enumerate(deduped_rows, 1):
+            if not row["website"] and row["postcode"] and row["name"]:
+                try:
+                    # Check if we got it from cache
+                    was_cached = cache and cache.get_website(row["name"], row["postcode"]) is not None
+                    
+                    url = find_osm_website(row["name"], row["postcode"], cache, offline_data)
+                    if url:
+                        row["website"] = url
+                        osm_enriched += 1
+                        if was_cached:
+                            osm_cached += 1
+                        else:
+                            print(f"  ✓ Found website for {row['name'][:30]}: {url[:50]}")
+                    else:
+                        osm_failed += 1
+                except Exception as e:
+                    osm_failed += 1
+                    print(f"  ✗ Error for {row['name'][:30]}: {str(e)[:50]}")
+                
+                # Progress indicator
+                if idx % 10 == 0:
+                    print(f"  Progress: {idx}/{len(deduped_rows)} checked, {osm_enriched} enriched ({osm_cached} from cache)")
+                    # Only sleep for non-cached requests
+                    if not was_cached:
+                        time.sleep(1)  # polite pause every few requests
+            else:
+                osm_skipped += 1
+        
+        # Save cache
+        if cache:
+            cache.finalize()
+        
+        print(f"\nOSM Enrichment Results:")
+        print(f"  - Enriched: {osm_enriched}")
+        print(f"  - From cache: {osm_cached}")
+        print(f"  - Not found: {osm_failed}")
+        print(f"  - Skipped (already has website): {osm_skipped}")
 
+    # Apply business name filter BEFORE Google enrichment to save API calls
+    print("\nApplying business name filters...")
+    pre_filter_count = len(deduped_rows)
+    filtered_rows = []
+    for row in deduped_rows:
+        if not should_exclude_business_name(row.get('name', '')):
+            filtered_rows.append(row)
+        else:
+            filter_stats.log_filter(row.get('name', ''), 'Excluded business type', 'business_name')
+    
+    print(f"Filtered out {pre_filter_count - len(filtered_rows)} venues before enrichment")
+    
     # Optional: use Google Programmable Search to fill any remaining blanks
     g_api_key = os.getenv("GOOGLE_API_KEY")
     g_cx = os.getenv("GOOGLE_CX")
     if g_api_key and g_cx:
         try:
             import google_website_enricher
-            google_website_enricher.enrich_rows_with_google(deduped_rows, g_api_key, g_cx)
+            google_website_enricher.enrich_rows_with_google(filtered_rows, g_api_key, g_cx, filter_stats=filter_stats)
         except Exception as exc:
             print(f"Google enrichment failed: {exc}")
     else:
         print("Skipping Google enrichment. Set GOOGLE_API_KEY and GOOGLE_CX to enable.")
 
-    print(f"Writing {len(deduped_rows):,} rows → {OUT}")
+    print(f"\nWriting {len(filtered_rows):,} rows → {OUT}")
+    
     with OUT.open("w", newline="", encoding="utf-8") as f:
         w = csv.DictWriter(f, fieldnames=cols)
         w.writeheader()
-        w.writerows(deduped_rows)
+        w.writerows(filtered_rows)
+    
+    # Save filter log
+    if filter_stats.filter_log:
+        filter_stats.save_log("build_essex_filter_log.csv")
+        print(f"Filter log saved to: build_essex_filter_log.csv")
 
 if __name__ == "__main__":
     main()

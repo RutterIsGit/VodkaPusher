@@ -1,0 +1,2 @@
+direct api access code example - shell
+curl https://api.brightdata.com/request -H "Content-Type: application/json" -H "Authorization: Bearer 0326fb8a1b16b1e8f5b5148b21f065f120d33bccd604ff8c7ee963bd11bcbd2f" -d "{\"zone\": \"mcp_unlocker\",\"url\": \"https://geo.brdtest.com/mygeo.json\", \"format\": \"raw\"}"
